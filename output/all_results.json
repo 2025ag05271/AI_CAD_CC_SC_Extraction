@@ -1,8 +1,116 @@
 {
   "documents": [
     {
+      "document_id": "cc_sc_test_1",
       "source_file": "input_images\\cc_sc_test_1.jpg",
-      "error": "Ollama extraction failed after 2 attempt(s): Ollama returned empty message.content. done=True, done_reason=stop, eval_count=479, prompt_eval_count=1559, thinking_chars=1181. The model may have consumed the output budget during thinking."
+      "model": "qwen3-vl:2b",
+      "results": [
+        {
+          "dimension_number": "No.1503",
+          "tag_type": "SC",
+          "tag_text": "[SC]",
+          "dimension_bbox": null,
+          "tag_bbox": null,
+          "association_basis": "No.1503",
+          "confidence": 0.95,
+          "needs_review": false,
+          "reason": null,
+          "source_crop": "full",
+          "evidence_count": 1
+        },
+        {
+          "dimension_number": "No.1504",
+          "tag_type": "SC",
+          "tag_text": "[SC]",
+          "dimension_bbox": null,
+          "tag_bbox": null,
+          "association_basis": "No.1504",
+          "confidence": 0.95,
+          "needs_review": false,
+          "reason": null,
+          "source_crop": "full",
+          "evidence_count": 1
+        },
+        {
+          "dimension_number": "No.1505",
+          "tag_type": "SC",
+          "tag_text": "[SC]",
+          "dimension_bbox": null,
+          "tag_bbox": null,
+          "association_basis": "No.1505",
+          "confidence": 0.95,
+          "needs_review": false,
+          "reason": null,
+          "source_crop": "full",
+          "evidence_count": 1
+        },
+        {
+          "dimension_number": "No.1506",
+          "tag_type": "SC",
+          "tag_text": "[SC]",
+          "dimension_bbox": null,
+          "tag_bbox": null,
+          "association_basis": "No.1506",
+          "confidence": 0.95,
+          "needs_review": false,
+          "reason": null,
+          "source_crop": "full",
+          "evidence_count": 1
+        },
+        {
+          "dimension_number": "No.1507",
+          "tag_type": "SC",
+          "tag_text": "[SC]",
+          "dimension_bbox": null,
+          "tag_bbox": null,
+          "association_basis": "No.1507",
+          "confidence": 0.95,
+          "needs_review": false,
+          "reason": null,
+          "source_crop": "full",
+          "evidence_count": 1
+        },
+        {
+          "dimension_number": "No.1508",
+          "tag_type": "SC",
+          "tag_text": "[SC]",
+          "dimension_bbox": null,
+          "tag_bbox": null,
+          "association_basis": "No.1508",
+          "confidence": 0.95,
+          "needs_review": false,
+          "reason": null,
+          "source_crop": "full",
+          "evidence_count": 1
+        },
+        {
+          "dimension_number": "No.1509",
+          "tag_type": "SC",
+          "tag_text": "[SC]",
+          "dimension_bbox": null,
+          "tag_bbox": null,
+          "association_basis": "No.1509",
+          "confidence": 0.95,
+          "needs_review": false,
+          "reason": null,
+          "source_crop": "full",
+          "evidence_count": 1
+        },
+        {
+          "dimension_number": "No.1510",
+          "tag_type": "SC",
+          "tag_text": "[SC]",
+          "dimension_bbox": null,
+          "tag_bbox": null,
+          "association_basis": "No.1510",
+          "confidence": 0.95,
+          "needs_review": false,
+          "reason": null,
+          "source_crop": "full",
+          "evidence_count": 1
+        }
+      ],
+      "unresolved": []
     }
   ]
 }

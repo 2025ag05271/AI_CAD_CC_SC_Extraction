@@ -5,7 +5,7 @@ from pathlib import Path
 import requests
 
 
-image_path = Path(r"input_images\cc_sc_test_1.jpg")
+image_path = Path(r"input_images\cc_sc_test_3.jpg")
 
 image_base64 = base64.b64encode(
     image_path.read_bytes()

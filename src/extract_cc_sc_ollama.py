@@ -22,6 +22,8 @@ from PIL import Image
 from pydantic import BaseModel, Field, ValidationError
 
 NO_RE = re.compile(r"(?i)\bNO\.?\s*(\d+)\b")
+SCRIPT_VERSION = "1.6.0"
+
 SUPPORTED = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
 
 
@@ -176,24 +178,36 @@ def call_ollama(
             message = body.get("message", {})
 
             content = (message.get("content") or "").strip()
-            thinking = message.get("thinking") or body.get("thinking") or ""
-
-            if not content:
-                done_reason = body.get("done_reason")
-                eval_count = body.get("eval_count")
-                prompt_eval_count = body.get("prompt_eval_count")
-
+            thinking = (message.get("thinking") or body.get("thinking") or "").strip()
+            raw_output = content or thinking
+            output_field = "message.content" if content else "message.thinking"
+            if not raw_output:
                 raise RuntimeError(
-                    "Ollama returned empty message.content. "
-                    f"done={body.get('done')}, "
-                    f"done_reason={done_reason}, "
-                    f"eval_count={eval_count}, "
-                    f"prompt_eval_count={prompt_eval_count}, "
-                    f"thinking_chars={len(thinking)}. "
-                    "The model may have consumed the output budget during thinking."
+                    "Ollama returned neither message.content nor message.thinking. "
+                    f"done_reason={body.get('done_reason')}, eval_count={body.get('eval_count')}"
                 )
-
-            return ExtractionResponse.model_validate_json(content)           
+            print(f"    Parsed Ollama output from {output_field}")
+            try:
+                return ExtractionResponse.model_validate_json(raw_output)
+            except ValidationError:
+                data = json.loads(raw_output)
+                rows = data.get("results", [])
+                normalized = []
+                for row in rows:
+                    dim = row.get("dimension_number") or row.get("dim_no") or row.get("dimension_no") or row.get("no") or ""
+                    raw_tag = row.get("tag_type") or row.get("sc_cc") or row.get("tag") or row.get("type")
+                    match = re.search(r"(?i)\b(CC|SC)\b", str(raw_tag or ""))
+                    tag = match.group(1).upper() if match else None
+                    normalized.append({
+                        "dimension_number": str(dim), "tag_type": tag,
+                        "tag_text": row.get("tag_text") or tag,
+                        "dimension_bbox": row.get("dimension_bbox"), "tag_bbox": row.get("tag_bbox"),
+                        "association_basis": row.get("association_basis") or "model visual association",
+                        "confidence": float(row.get("confidence", 0.85 if tag else 0.0)),
+                        "needs_review": bool(row.get("needs_review", tag is None)),
+                        "reason": row.get("reason"),
+                    })
+                return ExtractionResponse.model_validate({"results": normalized})
            
         except (requests.RequestException, KeyError, json.JSONDecodeError, ValidationError, RuntimeError) as exc:
             last_error = exc
@@ -270,7 +284,7 @@ def process_file(path: Path, args) -> dict:
     cropped, crop_offset = content_crop(processed)
 
     candidates = []
-    for tile, xoff, yoff, label in make_tiles(cropped, args.tile_size, args.overlap):
+    for tile, xoff, yoff, label in [(cropped, 0, 0, "full")]:
         print(f"  Calling Ollama for {label} ({tile.width}x{tile.height})")
         response = call_ollama(tile, args.model, args.ollama_url, args.timeout, args.retries)
         for detection in response.results:
@@ -299,6 +313,7 @@ def input_files(input_path: Path):
 
 
 def main() -> int:
+    print(f"CC/SC Extractor version: {SCRIPT_VERSION}")
     parser = argparse.ArgumentParser(description="Extract No.<digits> to CC/SC mappings using local Ollama.")
     parser.add_argument("input", type=Path, help="Image file or directory")
     parser.add_argument("--output", type=Path, default=Path("output"), help="Output directory")
