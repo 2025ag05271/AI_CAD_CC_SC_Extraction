@@ -1,16 +1,27 @@
 {
   "document_id": "cc_sc_test_1",
   "source_file": "input_images\\cc_sc_test_1.jpg",
-  "model": "qwen3-vl:2b",
+  "model": "gemma4:12b",
   "results": [
     {
       "dimension_number": "No.1503",
-      "tag_type": "SC",
-      "tag_text": "[SC]",
+      "classification": null,
       "dimension_bbox": null,
-      "tag_bbox": null,
-      "association_basis": "No.1503",
-      "confidence": 0.95,
+      "interpretation": "SC",
+      "evidence": [
+        {
+          "visible_text": "[SC]",
+          "semantic_role": "classification_marker",
+          "relationship": "The value in the 'SC/CC' column for the row containing No.1503 is explicitly marked as [SC].",
+          "bbox": [
+            716,
+            700,
+            752,
+            735
+          ]
+        }
+      ],
+      "confidence": 1.0,
       "needs_review": false,
       "reason": null,
       "source_crop": "full",
@@ -18,12 +29,23 @@
     },
     {
       "dimension_number": "No.1504",
-      "tag_type": "SC",
-      "tag_text": "[SC]",
+      "classification": null,
       "dimension_bbox": null,
-      "tag_bbox": null,
-      "association_basis": "No.1504",
-      "confidence": 0.95,
+      "interpretation": "SC",
+      "evidence": [
+        {
+          "visible_text": "[SC]",
+          "semantic_role": "classification_marker",
+          "relationship": "The value in the 'SC/CC' column for the row containing No.1504 is explicitly marked as [SC].",
+          "bbox": [
+            779,
+            700,
+            814,
+            735
+          ]
+        }
+      ],
+      "confidence": 1.0,
       "needs_review": false,
       "reason": null,
       "source_crop": "full",
@@ -31,12 +53,23 @@
     },
     {
       "dimension_number": "No.1505",
-      "tag_type": "SC",
-      "tag_text": "[SC]",
+      "classification": null,
       "dimension_bbox": null,
-      "tag_bbox": null,
-      "association_basis": "No.1505",
-      "confidence": 0.95,
+      "interpretation": "SC",
+      "evidence": [
+        {
+          "visible_text": "[SC]",
+          "semantic_role": "classification_marker",
+          "relationship": "The value in the 'SC/CC' column for the row containing No.1505 is explicitly marked as [SC].",
+          "bbox": [
+            841,
+            700,
+            877,
+            735
+          ]
+        }
+      ],
+      "confidence": 1.0,
       "needs_review": false,
       "reason": null,
       "source_crop": "full",
@@ -44,12 +77,23 @@
     },
     {
       "dimension_number": "No.1506",
-      "tag_type": "SC",
-      "tag_text": "[SC]",
+      "classification": null,
       "dimension_bbox": null,
-      "tag_bbox": null,
-      "association_basis": "No.1506",
-      "confidence": 0.95,
+      "interpretation": "SC",
+      "evidence": [
+        {
+          "visible_text": "[SC]",
+          "semantic_role": "classification_marker",
+          "relationship": "The value in the 'SC/CC' column for the row containing No.1506 is explicitly marked as [SC].",
+          "bbox": [
+            904,
+            700,
+            940,
+            735
+          ]
+        }
+      ],
+      "confidence": 1.0,
       "needs_review": false,
       "reason": null,
       "source_crop": "full",
@@ -57,12 +101,23 @@
     },
     {
       "dimension_number": "No.1507",
-      "tag_type": "SC",
-      "tag_text": "[SC]",
+      "classification": null,
       "dimension_bbox": null,
-      "tag_bbox": null,
-      "association_basis": "No.1507",
-      "confidence": 0.95,
+      "interpretation": "SC",
+      "evidence": [
+        {
+          "visible_text": "[SC]",
+          "semantic_role": "classification_marker",
+          "relationship": "The value in the 'SC/CC' column for the row containing No.1507 is explicitly marked as [SC].",
+          "bbox": [
+            967,
+            700,
+            1003,
+            735
+          ]
+        }
+      ],
+      "confidence": 1.0,
       "needs_review": false,
       "reason": null,
       "source_crop": "full",
@@ -70,12 +125,23 @@
     },
     {
       "dimension_number": "No.1508",
-      "tag_type": "SC",
-      "tag_text": "[SC]",
+      "classification": null,
       "dimension_bbox": null,
-      "tag_bbox": null,
-      "association_basis": "No.1508",
-      "confidence": 0.95,
+      "interpretation": "SC",
+      "evidence": [
+        {
+          "visible_text": "[SC]",
+          "semantic_role": "classification_marker",
+          "relationship": "The value in the 'SC/CC' column for the row containing No.1508 is explicitly marked as [SC].",
+          "bbox": [
+            1030,
+            700,
+            1066,
+            735
+          ]
+        }
+      ],
+      "confidence": 1.0,
       "needs_review": false,
       "reason": null,
       "source_crop": "full",
@@ -83,12 +149,23 @@
     },
     {
       "dimension_number": "No.1509",
-      "tag_type": "SC",
-      "tag_text": "[SC]",
+      "classification": null,
       "dimension_bbox": null,
-      "tag_bbox": null,
-      "association_basis": "No.1509",
-      "confidence": 0.95,
+      "interpretation": "SC",
+      "evidence": [
+        {
+          "visible_text": "[SC]",
+          "semantic_role": "classification_marker",
+          "relationship": "The value in the 'SC/CC' column for the row containing No.1509 is explicitly marked as [SC].",
+          "bbox": [
+            1093,
+            700,
+            1129,
+            735
+          ]
+        }
+      ],
+      "confidence": 1.0,
       "needs_review": false,
       "reason": null,
       "source_crop": "full",
@@ -96,12 +173,23 @@
     },
     {
       "dimension_number": "No.1510",
-      "tag_type": "SC",
-      "tag_text": "[SC]",
+      "classification": null,
       "dimension_bbox": null,
-      "tag_bbox": null,
-      "association_basis": "No.1510",
-      "confidence": 0.95,
+      "interpretation": "SC",
+      "evidence": [
+        {
+          "visible_text": "[SC]",
+          "semantic_role": "classification_marker",
+          "relationship": "The value in the 'SC/CC' column for the row containing No.1510 is explicitly marked as [SC].",
+          "bbox": [
+            1156,
+            700,
+            1192,
+            735
+          ]
+        }
+      ],
+      "confidence": 1.0,
       "needs_review": false,
       "reason": null,
       "source_crop": "full",

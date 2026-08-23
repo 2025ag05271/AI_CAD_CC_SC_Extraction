@@ -53,8 +53,7 @@ Bounding boxes must be [x1,y1,x2,y2] in normalized 0..1000 coordinates relative 
 Return only data matching the JSON schema. Preserve exact visible tag text in tag_text.
 """
 
-USER_PROMPT = """/no_think
-Extract every visible No.<digits> identifier and its associated CC or SC tag.
+USER_PROMPT = """Extract every visible No.<digits> identifier and its associated CC or SC tag.
 Normalize identifiers to No.<digits>, for example NO 27 becomes No.27.
 Use tag_type only CC, SC, or null.
 Set needs_review=true when confidence is below 0.75, when multiple candidates compete, or when text is unclear.
