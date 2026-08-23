@@ -1,0 +1,8 @@
+{
+  "documents": [
+    {
+      "source_file": "input_images\\cc_sc_test_1.jpg",
+      "error": "Ollama extraction failed after 2 attempt(s): Ollama returned empty message.content. done=True, done_reason=stop, eval_count=479, prompt_eval_count=1559, thinking_chars=1181. The model may have consumed the output budget during thinking."
+    }
+  ]
+}
