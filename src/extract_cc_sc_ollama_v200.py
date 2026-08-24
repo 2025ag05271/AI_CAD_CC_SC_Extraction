@@ -22,7 +22,7 @@ from PIL import Image
 from pydantic import BaseModel, Field, ValidationError
 
 NO_RE = re.compile(r"(?i)\bNO\.?\s*(\d+)\b")
-SCRIPT_VERSION = "2.4.0-post-normalization-recovery"
+SCRIPT_VERSION = "2.5.0-evidence-priority"
 
 SUPPORTED = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
 
@@ -236,33 +236,80 @@ def _normalize_compact_output(raw_output: str) -> ExtractionResponse:
 
 
 
-def _reconcile_semantics(result: ExtractionResponse) -> ExtractionResponse:
-    """Reconcile explicit CC/SC evidence when a model leaves classification null.
+def _extract_explicit_labels(text: str | None) -> set[str]:
+    """Extract explicit CC/SC values while ignoring generic paired labels.
 
-    This is layout-independent. It does not infer from coordinates, columns,
-    markers, or neighboring rows. It only reconciles an explicit CC/SC label
-    already present in the model's own evidence or interpretation.
+    A phrase such as SC/CC names the classification category and is not a
+    conflict. Bracketed values such as [SC] or [CC] are stronger item evidence.
+    """
+    value = str(text or "").strip()
+    if not value:
+        return set()
+
+    bracketed = {
+        match.upper()
+        for match in re.findall(r"(?i)[\[\(]\s*(CC|SC)\s*[\]\)]", value)
+    }
+    if bracketed:
+        return bracketed
+
+    # Remove category/header expressions before looking for standalone labels.
+    contextual = re.sub(r"(?i)\bSC\s*/\s*CC\b|\bCC\s*/\s*SC\b", " ", value)
+    return {
+        match.upper()
+        for match in re.findall(r"(?i)\b(CC|SC)\b", contextual)
+    }
+
+
+def _reconcile_semantics(result: ExtractionResponse) -> ExtractionResponse:
+    """Reconcile model fields using evidence priority, without layout rules.
+
+    Priority:
+    1. A valid structured classification from the model.
+    2. An unambiguous explicit value in evidence_text.
+    3. An unambiguous explicit value in interpretation after generic SC/CC
+       category phrases are removed.
     """
     for item in result.results:
-        evidence_blob = " ".join(
-            part for part in [item.evidence_text, item.interpretation]
-            if isinstance(part, str) and part.strip()
-        )
-        labels = {match.upper() for match in re.findall(r"(?i)\b(CC|SC)\b", evidence_blob)}
+        evidence_labels = _extract_explicit_labels(item.evidence_text)
+        interpretation_labels = _extract_explicit_labels(item.interpretation)
 
-        if item.classification is None and len(labels) == 1:
-            item.classification = next(iter(labels))  # type: ignore[assignment]
+        if item.classification in {"CC", "SC"}:
+            # Keep the structured value unless direct evidence explicitly
+            # contradicts it.
+            if evidence_labels and item.classification not in evidence_labels:
+                item.classification = None
+                item.needs_review = True
+                item.interpretation = (
+                    f"Structured classification conflicts with explicit evidence "
+                    f"{sorted(evidence_labels)}. " + item.interpretation
+                )
+            continue
+
+        if len(evidence_labels) == 1:
+            item.classification = next(iter(evidence_labels))  # type: ignore[assignment]
             item.needs_review = False
-        elif len(labels) > 1:
+        elif len(evidence_labels) > 1:
             item.classification = None
             item.needs_review = True
             item.interpretation = (
-                f"Conflicting explicit labels in evidence: {sorted(labels)}. "
-                + item.interpretation
+                f"Conflicting explicit labels in item evidence: "
+                f"{sorted(evidence_labels)}. " + item.interpretation
             )
-        elif item.classification is None and item.confidence >= 0.90:
-            # High confidence cannot compensate for missing classification evidence.
+        elif len(interpretation_labels) == 1:
+            item.classification = next(iter(interpretation_labels))  # type: ignore[assignment]
+            item.needs_review = False
+        elif len(interpretation_labels) > 1:
+            item.classification = None
             item.needs_review = True
+            item.interpretation = (
+                f"Conflicting explicit labels in interpretation: "
+                f"{sorted(interpretation_labels)}. " + item.interpretation
+            )
+        else:
+            item.classification = None
+            if item.confidence >= 0.90:
+                item.needs_review = True
 
     return result
 
@@ -414,7 +461,7 @@ def consolidate(candidates: list[dict]) -> list[dict]:
         if len(labels) > 1:
             best["classification"] = None
             best["needs_review"] = True
-            best["interpretation"] = f"Conflicting classifications: {sorted(labels)}"
+            best["interpretation"] = f"Conflicting classifications: {sorted(labels)}" # type: ignore
         best["evidence_count"] = len(items)
         final.append(best)
 
@@ -485,7 +532,7 @@ def process_file(path: Path, args) -> dict:
         "document_convention": response.document_convention,
         "results": results,
         "unresolved": [x for x in results if x.get("needs_review")],
-    }, processed
+    }, processed # type: ignore
 
 
 def input_files(input_path: Path):

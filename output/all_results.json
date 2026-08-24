@@ -8,167 +8,86 @@
       "results": [
         {
           "dimension_number": "No.1503",
-          "classification": null,
+          "classification": "SC",
           "evidence_text": "[SC]",
-          "interpretation": "Conflicting explicit labels in evidence: ['CC', 'SC']. The row for No. 1503 contains [SC] in the SC/CC column.",
+          "interpretation": "The row for No. 1503 contains [SC] in the SC/CC column.",
           "confidence": 1.0,
-          "needs_review": true,
+          "needs_review": false,
           "source_crop": "full",
           "evidence_count": 1
         },
         {
           "dimension_number": "No.1504",
-          "classification": null,
+          "classification": "SC",
           "evidence_text": "[SC]",
-          "interpretation": "Conflicting explicit labels in evidence: ['CC', 'SC']. The row for No. 1504 contains [SC] in the SC/CC column.",
+          "interpretation": "The row for No. 1504 contains [SC] in the SC/CC column.",
           "confidence": 1.0,
-          "needs_review": true,
+          "needs_review": false,
           "source_crop": "full",
           "evidence_count": 1
         },
         {
           "dimension_number": "No.1505",
-          "classification": null,
+          "classification": "SC",
           "evidence_text": "[SC]",
-          "interpretation": "Conflicting explicit labels in evidence: ['CC', 'SC']. The row for No. 1505 contains [SC] in the SC/CC column.",
+          "interpretation": "The row for No. 1505 contains [SC] in the SC/CC column.",
           "confidence": 1.0,
-          "needs_review": true,
+          "needs_review": false,
           "source_crop": "full",
           "evidence_count": 1
         },
         {
           "dimension_number": "No.1506",
-          "classification": null,
+          "classification": "SC",
           "evidence_text": "[SC]",
-          "interpretation": "Conflicting explicit labels in evidence: ['CC', 'SC']. The row for No. 1506 contains [SC] in the SC/CC column.",
+          "interpretation": "The row for No. 1506 contains [SC] in the SC/CC column.",
           "confidence": 1.0,
-          "needs_review": true,
+          "needs_review": false,
           "source_crop": "full",
           "evidence_count": 1
         },
         {
           "dimension_number": "No.1507",
-          "classification": null,
+          "classification": "SC",
           "evidence_text": "[SC]",
-          "interpretation": "Conflicting explicit labels in evidence: ['CC', 'SC']. The row for No. 1507 contains [SC] in the SC/CC column.",
+          "interpretation": "The row for No. 1507 contains [SC] in the SC/CC column.",
           "confidence": 1.0,
-          "needs_review": true,
+          "needs_review": false,
           "source_crop": "full",
           "evidence_count": 1
         },
         {
           "dimension_number": "No.1508",
-          "classification": null,
+          "classification": "SC",
           "evidence_text": "[SC]",
-          "interpretation": "Conflicting explicit labels in evidence: ['CC', 'SC']. The row for No. 1508 contains [SC] in the SC/CC column.",
+          "interpretation": "The row for No. 1508 contains [SC] in the SC/CC column.",
           "confidence": 1.0,
-          "needs_review": true,
+          "needs_review": false,
           "source_crop": "full",
           "evidence_count": 1
         },
         {
           "dimension_number": "No.1509",
-          "classification": null,
+          "classification": "SC",
           "evidence_text": "[SC]",
-          "interpretation": "Conflicting explicit labels in evidence: ['CC', 'SC']. The row for No. 1509 contains [SC] in the SC/CC column.",
+          "interpretation": "The row for No. 1509 contains [SC] in the SC/CC column.",
           "confidence": 1.0,
-          "needs_review": true,
+          "needs_review": false,
           "source_crop": "full",
           "evidence_count": 1
         },
         {
           "dimension_number": "No.1510",
-          "classification": null,
+          "classification": "SC",
           "evidence_text": "[SC]",
-          "interpretation": "Conflicting explicit labels in evidence: ['CC', 'SC']. The row for No. 1510 contains [SC] in the SC/CC column.",
+          "interpretation": "The row for No. 1510 contains [SC] in the SC/CC column.",
           "confidence": 1.0,
-          "needs_review": true,
+          "needs_review": false,
           "source_crop": "full",
           "evidence_count": 1
         }
       ],
-      "unresolved": [
-        {
-          "dimension_number": "No.1503",
-          "classification": null,
-          "evidence_text": "[SC]",
-          "interpretation": "Conflicting explicit labels in evidence: ['CC', 'SC']. The row for No. 1503 contains [SC] in the SC/CC column.",
-          "confidence": 1.0,
-          "needs_review": true,
-          "source_crop": "full",
-          "evidence_count": 1
-        },
-        {
-          "dimension_number": "No.1504",
-          "classification": null,
-          "evidence_text": "[SC]",
-          "interpretation": "Conflicting explicit labels in evidence: ['CC', 'SC']. The row for No. 1504 contains [SC] in the SC/CC column.",
-          "confidence": 1.0,
-          "needs_review": true,
-          "source_crop": "full",
-          "evidence_count": 1
-        },
-        {
-          "dimension_number": "No.1505",
-          "classification": null,
-          "evidence_text": "[SC]",
-          "interpretation": "Conflicting explicit labels in evidence: ['CC', 'SC']. The row for No. 1505 contains [SC] in the SC/CC column.",
-          "confidence": 1.0,
-          "needs_review": true,
-          "source_crop": "full",
-          "evidence_count": 1
-        },
-        {
-          "dimension_number": "No.1506",
-          "classification": null,
-          "evidence_text": "[SC]",
-          "interpretation": "Conflicting explicit labels in evidence: ['CC', 'SC']. The row for No. 1506 contains [SC] in the SC/CC column.",
-          "confidence": 1.0,
-          "needs_review": true,
-          "source_crop": "full",
-          "evidence_count": 1
-        },
-        {
-          "dimension_number": "No.1507",
-          "classification": null,
-          "evidence_text": "[SC]",
-          "interpretation": "Conflicting explicit labels in evidence: ['CC', 'SC']. The row for No. 1507 contains [SC] in the SC/CC column.",
-          "confidence": 1.0,
-          "needs_review": true,
-          "source_crop": "full",
-          "evidence_count": 1
-        },
-        {
-          "dimension_number": "No.1508",
-          "classification": null,
-          "evidence_text": "[SC]",
-          "interpretation": "Conflicting explicit labels in evidence: ['CC', 'SC']. The row for No. 1508 contains [SC] in the SC/CC column.",
-          "confidence": 1.0,
-          "needs_review": true,
-          "source_crop": "full",
-          "evidence_count": 1
-        },
-        {
-          "dimension_number": "No.1509",
-          "classification": null,
-          "evidence_text": "[SC]",
-          "interpretation": "Conflicting explicit labels in evidence: ['CC', 'SC']. The row for No. 1509 contains [SC] in the SC/CC column.",
-          "confidence": 1.0,
-          "needs_review": true,
-          "source_crop": "full",
-          "evidence_count": 1
-        },
-        {
-          "dimension_number": "No.1510",
-          "classification": null,
-          "evidence_text": "[SC]",
-          "interpretation": "Conflicting explicit labels in evidence: ['CC', 'SC']. The row for No. 1510 contains [SC] in the SC/CC column.",
-          "confidence": 1.0,
-          "needs_review": true,
-          "source_crop": "full",
-          "evidence_count": 1
-        }
-      ]
+      "unresolved": []
     }
   ]
 }
