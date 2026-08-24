@@ -22,66 +22,54 @@ from PIL import Image
 from pydantic import BaseModel, Field, ValidationError
 
 NO_RE = re.compile(r"(?i)\bNO\.?\s*(\d+)\b")
-SCRIPT_VERSION = "2.0.0-generic-evidence"
+SCRIPT_VERSION = "2.4.0-post-normalization-recovery"
 
 SUPPORTED = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
-
-
-class Evidence(BaseModel):
-    visible_text: str | None = None
-    semantic_role: str
-    relationship: str
-    bbox: list[int] | None = Field(default=None, min_length=4, max_length=4)
 
 
 class Detection(BaseModel):
     dimension_number: str
     classification: Literal["CC", "SC"] | None = None
-    dimension_bbox: list[int] | None = Field(default=None, min_length=4, max_length=4)
+    evidence_text: str | None = None
     interpretation: str
-    evidence: list[Evidence] = Field(default_factory=list)
     confidence: float = Field(ge=0.0, le=1.0)
     needs_review: bool
-    reason: str | None = None
 
 
 class ExtractionResponse(BaseModel):
-    document_structure_summary: str | None = None
+    document_convention: str | None = None
     results: list[Detection] = Field(default_factory=list)
+
+
+class MinimalDetection(BaseModel):
+    dimension_number: str
+    classification: Literal["CC", "SC"] | None = None
+    evidence_text: str | None = None
+
+
+class MinimalResponse(BaseModel):
+    results: list[MinimalDetection] = Field(default_factory=list)
 
 
 RESPONSE_SCHEMA = ExtractionResponse.model_json_schema()
 
-SYSTEM_PROMPT = """You are an evidence-grounded visual information extraction system for engineering documents.
-
-Your task is not to match a fixed template. First infer the document's own visual grammar: regions, tables, rows, columns, headers, legends, symbols, repeated conventions, merged cells, leader lines, and spatial groupings. Then independently evaluate every identifier matching No. followed by digits.
-
-For each identifier, determine whether the document visually classifies it as CC, SC, or neither. A classification is valid only when supported by visible evidence and a defensible spatial or semantic relationship. The evidence may be expressed directly, indirectly through a header or legend, through a marker, through an embedded annotation, or through another document-specific convention. Do not assume any particular layout, marker, column position, or wording.
-
-Core constraints:
-- Infer meaning from the current document rather than from a memorized template.
-- Evaluate each No.<digits> item independently.
-- Do not transfer a classification from a nearby item without explicit visual evidence.
-- A generic header mentioning CC/SC is context, not by itself an item classification.
-- Absence of evidence means classification null, not a guess.
-- Conflicting or unclear evidence means classification null and needs_review true.
-- Preserve short visible evidence text and describe why each evidence item applies.
-- Bounding boxes use normalized 0..1000 coordinates relative to the supplied image.
-- Return JSON matching the schema only.
+SYSTEM_PROMPT = """You extract CC/SC classifications from engineering document images.
+Do not assume a fixed layout or template. Infer the document's own visual convention from headers, legends, rows, cells, symbols, annotations, grouping, and spatial relationships.
+For every identifier matching No. followed by digits, independently return CC, SC, or null.
+Only classify when visible document evidence supports the relationship. Do not copy a classification from a nearby row. A general CC/SC heading alone is not row-level evidence. Use null when evidence is absent, conflicting, or unclear.
+Keep evidence_text and interpretation short. Return JSON only and exactly match the schema.
 """
 
-USER_PROMPT = """Analyze the complete engineering document using an infer-then-extract approach.
-
-Step 1: Briefly summarize the document structure and the visual convention used, if any, to express CC or SC classifications.
-Step 2: Find every visible identifier matching No. followed by digits.
-Step 3: For each identifier, independently decide CC, SC, or null from visible evidence.
-Step 4: Return evidence items. Each evidence item must state:
-- visible_text: exact short text or symbol when readable
-- semantic_role: what the item represents in this document
-- relationship: why it applies to this dimension identifier
-- bbox: normalized coordinates when possible
-
-Use interpretation to explain the association without relying on a fixed pattern name. Set needs_review true whenever evidence is incomplete, conflicting, or uncertain. Return valid JSON only.
+USER_PROMPT = """/no_think
+Infer the document convention, then extract every No.<digits> item.
+For each item return:
+- dimension_number
+- classification: CC, SC, or null
+- evidence_text: exact short visible evidence, maximum 20 words
+- interpretation: concise reason the evidence applies to this identifier, maximum 25 words
+- confidence from 0 to 1
+- needs_review
+Do not return bounding boxes. Do not omit unclassified No.<digits> items. Return JSON only.
 """
 
 
@@ -102,9 +90,19 @@ def check_server(base_url: str, model: str, timeout: int) -> None:
         )
 
 
-def normalize_no(value: str) -> str | None:
-    match = NO_RE.search(value or "")
-    return f"No.{int(match.group(1))}" if match else None
+def normalize_no(value: object) -> str | None:
+    """Normalize common model renderings while preserving the No.<digits> invariant."""
+    text = str(value or "").strip()
+    match = NO_RE.search(text)
+    if match:
+        return f"No.{int(match.group(1))}"
+
+    # Models sometimes return only the digits even when the image visibly says No.<digits>.
+    # Accept only a standalone integer, not arbitrary numbers embedded in other text.
+    bare = re.fullmatch(r"\s*(\d+)\s*", text)
+    if bare:
+        return f"No.{int(bare.group(1))}"
+    return None
 
 
 def preprocess(image: Image.Image, max_side: int = 2600) -> Image.Image:
@@ -165,6 +163,164 @@ def image_b64(image: Image.Image) -> str:
     return base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
+def _extract_complete_json(text: str) -> str:
+    """Return the first complete JSON object, ignoring surrounding model text."""
+    text = (text or "").strip()
+    start = text.find("{")
+    if start < 0:
+        raise RuntimeError("Model output contains no JSON object.")
+    depth = 0
+    in_string = False
+    escaped = False
+    for index in range(start, len(text)):
+        char = text[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:index + 1]
+    raise RuntimeError("Model returned incomplete JSON with unmatched braces.")
+
+
+def _normalize_compact_output(raw_output: str) -> ExtractionResponse:
+    json_text = _extract_complete_json(raw_output)
+    try:
+        return ExtractionResponse.model_validate_json(json_text)
+    except ValidationError:
+        data = json.loads(json_text)
+        rows = data.get("results", []) if isinstance(data, dict) else []
+        normalized = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            dim = (row.get("dimension_number") or row.get("dim_no") or
+                   row.get("dimension_no") or row.get("no") or "")
+            raw_tag = (row.get("classification") or row.get("tag_type") or
+                       row.get("sc_cc") or row.get("tag") or row.get("type"))
+            tag_match = re.search(r"(?i)\b(CC|SC)\b", str(raw_tag or ""))
+            classification = tag_match.group(1).upper() if tag_match else None
+            evidence_text = (row.get("evidence_text") or row.get("tag_text") or
+                             row.get("evidence") or (str(raw_tag) if raw_tag else None))
+            if isinstance(evidence_text, (list, dict)):
+                evidence_text = json.dumps(evidence_text, ensure_ascii=False)[:300]
+            try:
+                confidence = max(0.0, min(1.0, float(row.get("confidence", 0.70))))
+            except (TypeError, ValueError):
+                confidence = 0.0
+            needs_review = row.get("needs_review")
+            if needs_review is None:
+                needs_review = classification is None and bool(evidence_text)
+            normalized.append({
+                "dimension_number": str(dim),
+                "classification": classification,
+                "evidence_text": str(evidence_text) if evidence_text is not None else None,
+                "interpretation": str(row.get("interpretation") or row.get("association_basis") or "Document-inferred visual relationship"),
+                "confidence": confidence,
+                "needs_review": bool(needs_review),
+            })
+        return ExtractionResponse.model_validate({
+            "document_convention": data.get("document_convention") if isinstance(data, dict) else None,
+            "results": normalized,
+        })
+
+
+
+def _reconcile_semantics(result: ExtractionResponse) -> ExtractionResponse:
+    """Reconcile explicit CC/SC evidence when a model leaves classification null.
+
+    This is layout-independent. It does not infer from coordinates, columns,
+    markers, or neighboring rows. It only reconciles an explicit CC/SC label
+    already present in the model's own evidence or interpretation.
+    """
+    for item in result.results:
+        evidence_blob = " ".join(
+            part for part in [item.evidence_text, item.interpretation]
+            if isinstance(part, str) and part.strip()
+        )
+        labels = {match.upper() for match in re.findall(r"(?i)\b(CC|SC)\b", evidence_blob)}
+
+        if item.classification is None and len(labels) == 1:
+            item.classification = next(iter(labels))  # type: ignore[assignment]
+            item.needs_review = False
+        elif len(labels) > 1:
+            item.classification = None
+            item.needs_review = True
+            item.interpretation = (
+                f"Conflicting explicit labels in evidence: {sorted(labels)}. "
+                + item.interpretation
+            )
+        elif item.classification is None and item.confidence >= 0.90:
+            # High confidence cannot compensate for missing classification evidence.
+            item.needs_review = True
+
+    return result
+
+
+def _call_minimal_fallback(
+    image: Image.Image,
+    model: str,
+    base_url: str,
+    timeout: int,
+) -> ExtractionResponse:
+    """Second extraction pass used only when the primary pass returns zero rows."""
+    minimal_prompt = """/no_think
+Read the complete engineering table image. Find every identifier whose visible text starts with No. and is followed by digits.
+For every such identifier, infer whether the same document visually classifies it as CC, SC, or neither. Do not assume a fixed layout. Use the document's headers, row structure, legends, symbols, and annotations.
+Return JSON only in exactly this form:
+{"results":[{"dimension_number":"No.123","classification":"SC","evidence_text":"short visible evidence"}]}
+classification must be "CC", "SC", or null. The results array must contain every visible No.<digits> identifier and must not be empty when such identifiers are visible.
+"""
+    payload = {
+        "model": model,
+        "stream": False,
+        "think": False,
+        "format": MinimalResponse.model_json_schema(),
+        "messages": [{"role": "user", "content": minimal_prompt, "images": [image_b64(image)]}],
+        "options": {"temperature": 0, "seed": 117, "num_ctx": 4096, "num_predict": 2048},
+        "keep_alive": "10m",
+    }
+    response = requests.post(f"{base_url}/api/chat", json=payload, timeout=timeout)
+    response.raise_for_status()
+    body = response.json()
+    message = body.get("message", {})
+    content = (message.get("content") or "").strip()
+    thinking = (message.get("thinking") or body.get("thinking") or "").strip()
+    raw_output = content or thinking
+    if not raw_output:
+        raise RuntimeError("Minimal fallback returned no content or thinking output.")
+    minimal = MinimalResponse.model_validate_json(_extract_complete_json(raw_output))
+    if not minimal.results:
+        raise RuntimeError("Minimal fallback also returned an empty results array.")
+
+    rows = []
+    for item in minimal.results:
+        evidence = item.evidence_text
+        rows.append({
+            "dimension_number": item.dimension_number,
+            "classification": item.classification,
+            "evidence_text": evidence,
+            "interpretation": "Classification inferred from the document's visual convention.",
+            "confidence": 0.80 if item.classification else 0.60,
+            "needs_review": item.classification is None,
+        })
+    result = ExtractionResponse.model_validate({
+        "document_convention": "Recovered through minimal extraction pass.",
+        "results": rows,
+    })
+    return _reconcile_semantics(result)
+
+
 def call_ollama(
     image: Image.Image,
     model: str,
@@ -185,94 +341,48 @@ def call_ollama(
             "temperature": 0,
             "seed": 42,
             "num_ctx": 4096,
-            "num_predict": 2048,
+            "num_predict": 3072,
         },
         "keep_alive": "10m",
     }
-
     last_error = None
     for attempt in range(retries + 1):
         try:
             response = requests.post(f"{base_url}/api/chat", json=payload, timeout=timeout)
-           
             response.raise_for_status()
-
             body = response.json()
             message = body.get("message", {})
-
             content = (message.get("content") or "").strip()
             thinking = (message.get("thinking") or body.get("thinking") or "").strip()
             raw_output = content or thinking
             output_field = "message.content" if content else "message.thinking"
             if not raw_output:
                 raise RuntimeError(
-                    "Ollama returned neither message.content nor message.thinking. "
+                    "Ollama returned neither content nor thinking output. "
                     f"done_reason={body.get('done_reason')}, eval_count={body.get('eval_count')}"
                 )
+            result = _normalize_compact_output(raw_output)
+            result = _reconcile_semantics(result)
+            if not result.results:
+                print(
+                    "    Primary response was valid JSON but contained zero results; "
+                    "running minimal recovery pass...",
+                    file=sys.stderr,
+                )
+                result = _call_minimal_fallback(
+                    image, model, base_url, timeout
+                )
+                print("    Parsed Ollama output from minimal recovery pass")
+                return result
             print(f"    Parsed Ollama output from {output_field}")
-            try:
-                return ExtractionResponse.model_validate_json(raw_output)
-            except ValidationError:
-                data = json.loads(raw_output)
-                rows = data.get("results", []) if isinstance(data, dict) else []
-                normalized = []
-                for row in rows:
-                    if not isinstance(row, dict):
-                        continue
-                    dim = (row.get("dimension_number") or row.get("dim_no") or
-                           row.get("dimension_no") or row.get("no") or "")
-                    raw_tag = (row.get("classification") or row.get("tag_type") or
-                               row.get("sc_cc") or row.get("tag") or row.get("type"))
-                    match = re.search(r"(?i)\b(CC|SC)\b", str(raw_tag or ""))
-                    classification = match.group(1).upper() if match else None
-                    raw_evidence = row.get("evidence", [])
-                    if not isinstance(raw_evidence, list):
-                        raw_evidence = []
-                    evidence = []
-                    for item in raw_evidence:
-                        if isinstance(item, dict):
-                            evidence.append({
-                                "visible_text": item.get("visible_text") or item.get("text"),
-                                "semantic_role": item.get("semantic_role") or item.get("role") or "visual evidence",
-                                "relationship": item.get("relationship") or item.get("basis") or "associated by document structure",
-                                "bbox": item.get("bbox"),
-                            })
-                    if not evidence and (row.get("tag_text") or raw_tag):
-                        evidence.append({
-                            "visible_text": row.get("tag_text") or str(raw_tag),
-                            "semantic_role": "classification evidence",
-                            "relationship": row.get("association_basis") or "associated by document structure",
-                            "bbox": row.get("tag_bbox"),
-                        })
-                    try:
-                        confidence = max(0.0, min(1.0, float(row.get("confidence", 0.70))))
-                    except (TypeError, ValueError):
-                        confidence = 0.0
-                    needs_review = row.get("needs_review")
-                    if needs_review is None:
-                        needs_review = classification is None and bool(evidence)
-                    normalized.append({
-                        "dimension_number": str(dim),
-                        "classification": classification,
-                        "dimension_bbox": row.get("dimension_bbox"),
-                        "interpretation": row.get("interpretation") or row.get("association_basis") or "Model-inferred document relationship",
-                        "evidence": evidence,
-                        "confidence": confidence,
-                        "needs_review": bool(needs_review),
-                        "reason": row.get("reason"),
-                    })
-                return ExtractionResponse.model_validate({
-                    "document_structure_summary": data.get("document_structure_summary") if isinstance(data, dict) else None,
-                    "results": normalized,
-                })
-
-           
-        except (requests.RequestException, KeyError, json.JSONDecodeError, ValidationError, RuntimeError) as exc:
+            return result
+        except (requests.RequestException, KeyError, json.JSONDecodeError,
+                ValidationError, RuntimeError) as exc:
             last_error = exc
             if attempt < retries:
+                print(f"    Attempt {attempt + 1} failed: {exc}; retrying...", file=sys.stderr)
                 time.sleep(2 * (attempt + 1))
     raise RuntimeError(f"Ollama extraction failed after {retries + 1} attempt(s): {last_error}")
-
 
 def map_bbox(box: list[int] | None, tile: Image.Image, xoff: int, yoff: int):
     if not box:
@@ -296,30 +406,16 @@ def consolidate(candidates: list[dict]) -> list[dict]:
         grouped.setdefault(normalized, []).append(item)
 
     final = []
-    for dimension_number, items in grouped.items():
-        labels = {
-            item.get("classification") for item in items
-            if item.get("classification") in {"CC", "SC"}
-        }
+    for _, items in grouped.items():
         items.sort(key=lambda item: item.get("confidence", 0.0), reverse=True)
         best = items[0]
-        all_evidence = []
-        seen = set()
-        for item in items:
-            for evidence in item.get("evidence", []):
-                key = (
-                    evidence.get("visible_text"), evidence.get("semantic_role"),
-                    evidence.get("relationship"), str(evidence.get("bbox"))
-                )
-                if key not in seen:
-                    seen.add(key)
-                    all_evidence.append(evidence)
-        best["evidence"] = all_evidence
-        best["evidence_count"] = len(all_evidence)
+        labels = {item.get("classification") for item in items
+                  if item.get("classification") in {"CC", "SC"}}
         if len(labels) > 1:
             best["classification"] = None
             best["needs_review"] = True
-            best["reason"] = f"Conflicting classifications across evidence: {sorted(labels)}" # type: ignore
+            best["interpretation"] = f"Conflicting classifications: {sorted(labels)}"
+        best["evidence_count"] = len(items)
         final.append(best)
 
     def sort_key(item):
@@ -329,51 +425,67 @@ def consolidate(candidates: list[dict]) -> list[dict]:
 
 
 def annotate(image: Image.Image, detections: list[dict], output_path: Path) -> None:
+    """Save the processed image. Version 2.1 omits model-generated boxes for reliability."""
     canvas = cv2.cvtColor(np.array(image.convert("RGB")), cv2.COLOR_RGB2BGR)
-    for item in detections:
-        color = (0, 0, 255) if item.get("needs_review") else (0, 160, 0)
-        boxes = [item.get("dimension_bbox")]
-        boxes.extend(e.get("bbox") for e in item.get("evidence", []))
-        for box in boxes:
-            if box and len(box) == 4:
-                x1, y1, x2, y2 = map(int, box)
-                cv2.rectangle(canvas, (x1, y1), (x2, y2), color, 2)
-        box = item.get("dimension_bbox")
-        if box:
-            label = f'{item["dimension_number"]} -> {item.get("classification") or "NONE/REVIEW"} ({item.get("confidence", 0):.2f})'
-            cv2.putText(canvas, label, (int(box[0]), max(20, int(box[1]) - 7)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2, cv2.LINE_AA)
     cv2.imwrite(str(output_path), canvas)
 
 
 def process_file(path: Path, args) -> dict:
     original = Image.open(path).convert("RGB")
     processed = preprocess(original, args.max_side)
-    cropped, crop_offset = content_crop(processed)
+    cropped, _ = content_crop(processed)
 
+    print(f"  Calling Ollama for full ({cropped.width}x{cropped.height})")
+    response = call_ollama(
+        cropped, args.model, args.ollama_url, args.timeout, args.retries
+    )
     candidates = []
-    for tile, xoff, yoff, label in [(cropped, 0, 0, "full")]:
-        print(f"  Calling Ollama for {label} ({tile.width}x{tile.height})")
-        response = call_ollama(tile, args.model, args.ollama_url, args.timeout, args.retries)
-        for detection in response.results:
-            item = detection.model_dump()
-            item["dimension_bbox"] = map_bbox(item["dimension_bbox"], tile, xoff + crop_offset[0], yoff + crop_offset[1])
-            for evidence in item.get("evidence", []):
-                evidence["bbox"] = map_bbox(
-                    evidence.get("bbox"), tile,
-                    xoff + crop_offset[0], yoff + crop_offset[1]
-                )
-            item["source_crop"] = label
-            candidates.append(item)
+    for detection in response.results:
+        item = detection.model_dump()
+        item["source_crop"] = "full"
+        candidates.append(item)
 
     results = consolidate(candidates)
+    print(
+        f"    Model rows: {len(response.results)}; "
+        f"rows after identifier normalization: {len(results)}"
+    )
+
+    # A model may return non-empty rows with malformed or bare identifiers.
+    # If every row is rejected during normalization, recover rather than silently
+    # writing an empty successful document.
+    if response.results and not results:
+        print(
+            "    Primary rows were dropped during identifier normalization; "
+            "running minimal recovery pass...",
+            file=sys.stderr,
+        )
+        recovered = _call_minimal_fallback(
+            cropped, args.model, args.ollama_url, args.timeout
+        )
+        recovered_candidates = []
+        for detection in recovered.results:
+            item = detection.model_dump()
+            item["source_crop"] = "minimal_recovery"
+            recovered_candidates.append(item)
+        results = consolidate(recovered_candidates)
+        response.document_convention = recovered.document_convention
+        print(f"    Recovery rows after normalization: {len(results)}")
+
+    if not results:
+        raise RuntimeError(
+            "No valid No.<digits> results remained after extraction and recovery. "
+            "The model response was not task-valid."
+        )
+
     return {
         "document_id": path.stem,
         "source_file": str(path),
         "model": args.model,
+        "document_convention": response.document_convention,
         "results": results,
         "unresolved": [x for x in results if x.get("needs_review")],
-    }, processed # type: ignore
+    }, processed
 
 
 def input_files(input_path: Path):
