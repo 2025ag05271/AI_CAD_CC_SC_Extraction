@@ -1,0 +1,250 @@
+{
+  "document_id": "cc_sc_test_3",
+  "source_file": "input_images\\cc_sc_test_3.jpg",
+  "model": "qwen3-vl:8b",
+  "document_convention": null,
+  "results": [
+    {
+      "dimension_number": "No.1600",
+      "classification": "SC",
+      "evidence_text": "SC/CC column contains [SC] for No. 1600 row",
+      "interpretation": "SC/CC column shows [SC] for this row",
+      "confidence": 0.9,
+      "needs_review": false,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.1601",
+      "classification": null,
+      "evidence_text": "SC/CC column is blank for No. 1601 row",
+      "interpretation": "SC/CC column is empty for this row",
+      "confidence": 0.9,
+      "needs_review": true,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.1602",
+      "classification": "SC",
+      "evidence_text": "SC/CC column contains [SC] for No. 1602 row",
+      "interpretation": "SC/CC column shows [SC] for this row",
+      "confidence": 0.9,
+      "needs_review": false,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.1603",
+      "classification": "SC",
+      "evidence_text": "SC/CC column contains [SC] for No. 1603 row",
+      "interpretation": "SC/CC column shows [SC] for this row",
+      "confidence": 0.9,
+      "needs_review": false,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.1604",
+      "classification": "SC",
+      "evidence_text": "SC/CC column contains [SC] for No. 1604 row",
+      "interpretation": "SC/CC column shows [SC] for this row",
+      "confidence": 0.9,
+      "needs_review": false,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.1605",
+      "classification": null,
+      "evidence_text": "SC/CC column is blank for No. 1605 row",
+      "interpretation": "SC/CC column is empty for this row",
+      "confidence": 0.9,
+      "needs_review": true,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.1606",
+      "classification": "SC",
+      "evidence_text": "SC/CC column contains [SC] for No. 1606 row",
+      "interpretation": "SC/CC column shows [SC] for this row",
+      "confidence": 0.9,
+      "needs_review": false,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.1607",
+      "classification": null,
+      "evidence_text": "SC/CC column is blank for No. 1607 row",
+      "interpretation": "SC/CC column is empty for this row",
+      "confidence": 0.9,
+      "needs_review": true,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.1608",
+      "classification": "SC",
+      "evidence_text": "SC/CC column contains [SC] for No. 1608 row",
+      "interpretation": "SC/CC column shows [SC] for this row",
+      "confidence": 0.9,
+      "needs_review": false,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.1609",
+      "classification": "SC",
+      "evidence_text": "SC/CC column contains [SC] for No. 1609 row",
+      "interpretation": "SC/CC column shows [SC] for this row",
+      "confidence": 0.9,
+      "needs_review": false,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.1610",
+      "classification": "SC",
+      "evidence_text": "SC/CC column contains [SC] for No. 1610 row",
+      "interpretation": "SC/CC column shows [SC] for this row",
+      "confidence": 0.9,
+      "needs_review": false,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.1611",
+      "classification": null,
+      "evidence_text": "SC/CC column is blank for No. 1611 row",
+      "interpretation": "SC/CC column is empty for this row",
+      "confidence": 0.9,
+      "needs_review": true,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.1612",
+      "classification": null,
+      "evidence_text": "SC/CC column is blank for No. 1612 row",
+      "interpretation": "SC/CC column is empty for this row",
+      "confidence": 0.9,
+      "needs_review": true,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.1613",
+      "classification": null,
+      "evidence_text": "SC/CC column is blank for No. 1613 row",
+      "interpretation": "SC/CC column is empty for this row",
+      "confidence": 0.9,
+      "needs_review": true,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.1614",
+      "classification": null,
+      "evidence_text": "SC/CC column is blank for No. 1614 row",
+      "interpretation": "SC/CC column is empty for this row",
+      "confidence": 0.9,
+      "needs_review": true,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.1615",
+      "classification": null,
+      "evidence_text": "SC/CC column is blank for No. 1615 row",
+      "interpretation": "SC/CC column is empty for this row",
+      "confidence": 0.9,
+      "needs_review": true,
+      "source_crop": "full",
+      "evidence_count": 1
+    }
+  ],
+  "unresolved": [
+    {
+      "dimension_number": "No.1601",
+      "classification": null,
+      "evidence_text": "SC/CC column is blank for No. 1601 row",
+      "interpretation": "SC/CC column is empty for this row",
+      "confidence": 0.9,
+      "needs_review": true,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.1605",
+      "classification": null,
+      "evidence_text": "SC/CC column is blank for No. 1605 row",
+      "interpretation": "SC/CC column is empty for this row",
+      "confidence": 0.9,
+      "needs_review": true,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.1607",
+      "classification": null,
+      "evidence_text": "SC/CC column is blank for No. 1607 row",
+      "interpretation": "SC/CC column is empty for this row",
+      "confidence": 0.9,
+      "needs_review": true,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.1611",
+      "classification": null,
+      "evidence_text": "SC/CC column is blank for No. 1611 row",
+      "interpretation": "SC/CC column is empty for this row",
+      "confidence": 0.9,
+      "needs_review": true,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.1612",
+      "classification": null,
+      "evidence_text": "SC/CC column is blank for No. 1612 row",
+      "interpretation": "SC/CC column is empty for this row",
+      "confidence": 0.9,
+      "needs_review": true,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.1613",
+      "classification": null,
+      "evidence_text": "SC/CC column is blank for No. 1613 row",
+      "interpretation": "SC/CC column is empty for this row",
+      "confidence": 0.9,
+      "needs_review": true,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.1614",
+      "classification": null,
+      "evidence_text": "SC/CC column is blank for No. 1614 row",
+      "interpretation": "SC/CC column is empty for this row",
+      "confidence": 0.9,
+      "needs_review": true,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.1615",
+      "classification": null,
+      "evidence_text": "SC/CC column is blank for No. 1615 row",
+      "interpretation": "SC/CC column is empty for this row",
+      "confidence": 0.9,
+      "needs_review": true,
+      "source_crop": "full",
+      "evidence_count": 1
+    }
+  ]
+}

@@ -548,7 +548,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Extract No.<digits> to CC/SC mappings using local Ollama.")
     parser.add_argument("input", type=Path, help="Image file or directory")
     parser.add_argument("--output", type=Path, default=Path("output"), help="Output directory")
-    parser.add_argument("--model", default="qwen3-vl:2b")
+    parser.add_argument("--model", default="qwen3-vl:8b")
     parser.add_argument("--ollama-url", default="http://localhost:11434")
     parser.add_argument("--tile-size", type=int, default=1500)
     parser.add_argument("--overlap", type=int, default=250)

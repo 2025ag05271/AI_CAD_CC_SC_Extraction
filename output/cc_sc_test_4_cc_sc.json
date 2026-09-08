@@ -1,0 +1,119 @@
+{
+  "document_id": "cc_sc_test_4",
+  "source_file": "input_images\\cc_sc_test_4.jpg",
+  "model": "qwen3-vl:8b",
+  "document_convention": null,
+  "results": [
+    {
+      "dimension_number": "No.2900",
+      "classification": "CC",
+      "evidence_text": "Row with No. 2900 has 'X' in CC column",
+      "interpretation": "Row shows 'X' in CC column, indicating CC classification.",
+      "confidence": 0.9,
+      "needs_review": false,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.2901",
+      "classification": "CC",
+      "evidence_text": "Row with No. 2901 has 'X' in CC column",
+      "interpretation": "Row shows 'X' in CC column, indicating CC classification.",
+      "confidence": 0.9,
+      "needs_review": false,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.2902",
+      "classification": "CC",
+      "evidence_text": "Row with No. 2902 has 'X' in CC column",
+      "interpretation": "Row shows 'X' in CC column, indicating CC classification.",
+      "confidence": 0.9,
+      "needs_review": false,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.2903",
+      "classification": "CC",
+      "evidence_text": "Row with No. 2903 has 'X' in CC column",
+      "interpretation": "Row shows 'X' in CC column, indicating CC classification.",
+      "confidence": 0.9,
+      "needs_review": false,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.2904",
+      "classification": "CC",
+      "evidence_text": "Row with No. 2904 has 'X' in CC column",
+      "interpretation": "Row shows 'X' in CC column, indicating CC classification.",
+      "confidence": 0.9,
+      "needs_review": false,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.2905",
+      "classification": "CC",
+      "evidence_text": "Row with No. 2905 has 'X' in CC column",
+      "interpretation": "Row shows 'X' in CC column, indicating CC classification.",
+      "confidence": 0.9,
+      "needs_review": false,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.2906",
+      "classification": "CC",
+      "evidence_text": "Row with No. 2906 has 'X' in CC column",
+      "interpretation": "Row shows 'X' in CC column, indicating CC classification.",
+      "confidence": 0.9,
+      "needs_review": false,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.2907",
+      "classification": "CC",
+      "evidence_text": "Row with No. 2907 has 'X' in CC column",
+      "interpretation": "Row shows 'X' in CC column, indicating CC classification.",
+      "confidence": 0.9,
+      "needs_review": false,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.2908",
+      "classification": "CC",
+      "evidence_text": "Row with No. 2908 has 'X' in CC column",
+      "interpretation": "Row shows 'X' in CC column, indicating CC classification.",
+      "confidence": 0.9,
+      "needs_review": false,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.2909",
+      "classification": "CC",
+      "evidence_text": "Row with No. 2909 has 'X' in CC column",
+      "interpretation": "Row shows 'X' in CC column, indicating CC classification.",
+      "confidence": 0.9,
+      "needs_review": false,
+      "source_crop": "full",
+      "evidence_count": 1
+    },
+    {
+      "dimension_number": "No.2910",
+      "classification": "CC",
+      "evidence_text": "Row with No. 2910 has 'X' in CC column",
+      "interpretation": "Row shows 'X' in CC column, indicating CC classification.",
+      "confidence": 0.9,
+      "needs_review": false,
+      "source_crop": "full",
+      "evidence_count": 1
+    }
+  ],
+  "unresolved": []
+}
