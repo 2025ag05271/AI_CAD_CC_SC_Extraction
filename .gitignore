@@ -15,7 +15,6 @@ Thumbs.db
 
 # Project generated outputs
 output/
-input_images/
 
 # Optional: keep local config files untracked if needed
 .env
