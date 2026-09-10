@@ -10,10 +10,13 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import logging
 import os
 import re
 import sys
 import time
+from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
@@ -29,6 +32,76 @@ SCRIPT_VERSION = "3.0.0-azure-endpoint"
 SUPPORTED = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
 
 DEFAULT_ENDPOINT = "https://qwen3-6-27b-ep.westeurope.inference.ml.azure.com/v1/chat/completions"
+
+LOGGER = logging.getLogger("cc_sc")
+STEP_TIMINGS: list[tuple[str, float, str]] = []
+
+
+def setup_logging(log_dir: Path) -> Path:
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / f"run_{datetime.now():%Y%m%d_%H%M%S}.log"
+
+    file_handler = logging.FileHandler(log_path, encoding="utf-8")
+    file_handler.setFormatter(logging.Formatter(
+        "%(asctime)s.%(msecs)03d | %(levelname)-5s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+    ))
+    console = logging.StreamHandler(sys.stdout)
+    console.setFormatter(logging.Formatter("%(message)s"))
+
+    LOGGER.setLevel(logging.DEBUG)
+    LOGGER.handlers.clear()
+    LOGGER.addHandler(file_handler)
+    LOGGER.addHandler(console)
+    LOGGER.propagate = False
+    return log_path
+
+
+class _Step:
+    """Mutable handle so a step can attach result detail before it is logged."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.start = time.perf_counter()
+        self.elapsed = 0.0
+        self.detail = ""
+
+
+@contextmanager
+def step(name: str, detail: str = ""):
+    marker = _Step(name)
+    LOGGER.info("START | %s%s", name, f" | {detail}" if detail else "")
+    try:
+        yield marker
+    except Exception as exc:
+        marker.elapsed = time.perf_counter() - marker.start
+        STEP_TIMINGS.append((name, marker.elapsed, "failed"))
+        LOGGER.error("FAIL  | %s | %.3fs | %s", name, marker.elapsed, exc)
+        raise
+    marker.elapsed = time.perf_counter() - marker.start
+    STEP_TIMINGS.append((name, marker.elapsed, "ok"))
+    LOGGER.info(
+        "DONE  | %s | %.3fs%s", name, marker.elapsed,
+        f" | {marker.detail}" if marker.detail else "",
+    )
+
+
+def log_timing_summary(total_elapsed: float) -> None:
+    grouped: dict[str, list[float]] = {}
+    for name, elapsed, _ in STEP_TIMINGS:
+        entry = grouped.setdefault(name, [0.0, 0.0])
+        entry[0] += 1
+        entry[1] += elapsed
+
+    LOGGER.info("=" * 78)
+    LOGGER.info("TIMING SUMMARY (aggregated by step)")
+    for name, (calls, total) in sorted(grouped.items(), key=lambda kv: kv[1][1], reverse=True):
+        share = (total / total_elapsed * 100) if total_elapsed else 0.0
+        LOGGER.info(
+            "  %-34s calls=%-3d total=%8.3fs avg=%8.3fs %5.1f%%",
+            name, int(calls), total, total / calls, share,
+        )
+    LOGGER.info("  TOTAL RUNTIME %.3fs", total_elapsed)
+    LOGGER.info("=" * 78)
 
 
 class Detection(BaseModel):
@@ -306,10 +379,13 @@ def _build_payload(
     messages = []
     if system_prompt:
         messages.append({"role": "system", "content": system_prompt})
+    with step("encode_image_base64") as marker:
+        data_url = image_data_url(image)
+        marker.detail = f"{len(data_url) / 1024:.1f} KB data URL"
     messages.append({
         "role": "user",
         "content": [
-            {"type": "image_url", "image_url": {"url": image_data_url(image)}},
+            {"type": "image_url", "image_url": {"url": data_url}},
             {"type": "text", "text": text_prompt},
         ],
     })
@@ -330,11 +406,19 @@ def _post_chat(payload: dict, args) -> str:
         "Authorization": f"Bearer {args.token}",
         "Content-Type": "application/json",
     }
-    response = requests.post(args.endpoint, json=payload, headers=headers, timeout=args.timeout)
+    with step("http_request_endpoint", f"max_tokens={payload.get('max_tokens')}") as marker:
+        response = requests.post(args.endpoint, json=payload, headers=headers, timeout=args.timeout)
+        marker.detail = f"HTTP {response.status_code} | {len(response.content) / 1024:.1f} KB response"
     if response.status_code == 401:
         raise RuntimeError("Endpoint rejected the bearer token (401). Check AZURE_ENDPOINT_TOKEN in .env.")
     response.raise_for_status()
     body = response.json()
+    usage = body.get("usage") or {}
+    if usage:
+        LOGGER.info(
+            "token usage | prompt=%s completion=%s total=%s",
+            usage.get("prompt_tokens"), usage.get("completion_tokens"), usage.get("total_tokens"),
+        )
     choices = body.get("choices") or []
     if not choices:
         raise RuntimeError(f"Endpoint returned no choices: {json.dumps(body)[:500]}")
@@ -366,7 +450,8 @@ def check_endpoint(args) -> None:
         "Content-Type": "application/json",
     }
     try:
-        response = requests.post(args.endpoint, json=probe, headers=headers, timeout=30)
+        with step("endpoint_health_check", args.endpoint):
+            response = requests.post(args.endpoint, json=probe, headers=headers, timeout=30)
     except requests.RequestException as exc:
         raise RuntimeError(f"Cannot reach endpoint {args.endpoint}. Details: {exc}") from exc
     if response.status_code == 401:
@@ -379,53 +464,68 @@ def check_endpoint(args) -> None:
 
 def _call_minimal_fallback(image: Image.Image, args) -> ExtractionResponse:
     """Second extraction pass used only when the primary pass returns zero usable rows."""
-    payload = _build_payload(image, MINIMAL_PROMPT, args, system_prompt=None)
-    raw_output = _post_chat(payload, args)
-    minimal = MinimalResponse.model_validate_json(_extract_complete_json(raw_output))
-    if not minimal.results:
-        raise RuntimeError("Minimal fallback also returned an empty results array.")
+    with step("minimal_fallback_pass") as fallback_marker:
+        with step("build_payload_minimal"):
+            payload = _build_payload(image, MINIMAL_PROMPT, args, system_prompt=None)
+        raw_output = _post_chat(payload, args)
+        with step("parse_minimal_json") as marker:
+            minimal = MinimalResponse.model_validate_json(_extract_complete_json(raw_output))
+            marker.detail = f"{len(minimal.results)} rows"
+        if not minimal.results:
+            raise RuntimeError("Minimal fallback also returned an empty results array.")
 
-    rows = []
-    for item in minimal.results:
-        rows.append({
-            "dimension_number": item.dimension_number,
-            "classification": item.classification,
-            "evidence_text": item.evidence_text,
-            "interpretation": "Classification inferred from the document's visual convention.",
-            "confidence": 0.80 if item.classification else 0.60,
-            "needs_review": item.classification is None,
+        rows = []
+        for item in minimal.results:
+            rows.append({
+                "dimension_number": item.dimension_number,
+                "classification": item.classification,
+                "evidence_text": item.evidence_text,
+                "interpretation": "Classification inferred from the document's visual convention.",
+                "confidence": 0.80 if item.classification else 0.60,
+                "needs_review": item.classification is None,
+            })
+        result = ExtractionResponse.model_validate({
+            "document_convention": "Recovered through minimal extraction pass.",
+            "results": rows,
         })
-    result = ExtractionResponse.model_validate({
-        "document_convention": "Recovered through minimal extraction pass.",
-        "results": rows,
-    })
-    return _reconcile_semantics(result)
+        with step("reconcile_semantics_minimal"):
+            result = _reconcile_semantics(result)
+        fallback_marker.detail = f"{len(result.results)} rows recovered"
+    return result
 
 
 def call_endpoint(image: Image.Image, args) -> ExtractionResponse:
-    payload = _build_payload(image, USER_PROMPT, args, SYSTEM_PROMPT)
+    with step("build_payload_primary"):
+        payload = _build_payload(image, USER_PROMPT, args, SYSTEM_PROMPT)
     last_error = None
     for attempt in range(args.retries + 1):
         try:
-            raw_output = _post_chat(payload, args)
-            result = _reconcile_semantics(_normalize_compact_output(raw_output))
+            with step("extraction_attempt", f"attempt {attempt + 1}/{args.retries + 1}"):
+                raw_output = _post_chat(payload, args)
+                with step("parse_model_json") as marker:
+                    result = _normalize_compact_output(raw_output)
+                    marker.detail = f"{len(result.results)} raw rows"
+                with step("reconcile_semantics") as marker:
+                    result = _reconcile_semantics(result)
+                    classified = sum(1 for r in result.results if r.classification)
+                    marker.detail = f"{classified}/{len(result.results)} classified"
             if not result.results:
-                print(
-                    "    Primary response was valid JSON but contained zero results; "
-                    "running minimal recovery pass...",
-                    file=sys.stderr,
+                LOGGER.warning(
+                    "primary response was valid JSON but contained zero results; "
+                    "running minimal recovery pass"
                 )
                 result = _call_minimal_fallback(image, args)
-                print("    Parsed endpoint output from minimal recovery pass")
+                LOGGER.info("parsed endpoint output from minimal recovery pass")
                 return result
-            print("    Parsed endpoint output from choices[0].message.content")
+            LOGGER.info("parsed endpoint output from choices[0].message.content")
             return result
         except (requests.RequestException, KeyError, json.JSONDecodeError,
                 ValidationError, RuntimeError) as exc:
             last_error = exc
             if attempt < args.retries:
-                print(f"    Attempt {attempt + 1} failed: {exc}; retrying...", file=sys.stderr)
-                time.sleep(2 * (attempt + 1))
+                LOGGER.warning("attempt %d failed: %s; retrying", attempt + 1, exc)
+                with step("retry_backoff_sleep", f"{2 * (attempt + 1)}s"):
+                    time.sleep(2 * (attempt + 1))
     raise RuntimeError(f"Endpoint extraction failed after {args.retries + 1} attempt(s): {last_error}")
 
 
@@ -463,11 +563,17 @@ def annotate(image: Image.Image, output_path: Path) -> None:
 
 
 def process_file(path: Path, args):
-    original = Image.open(path).convert("RGB")
-    processed = preprocess(original, args.max_side)
-    cropped, _ = content_crop(processed)
+    with step("load_image", str(path)) as marker:
+        original = Image.open(path).convert("RGB")
+        marker.detail = f"{original.width}x{original.height}"
+    with step("preprocess_image") as marker:
+        processed = preprocess(original, args.max_side)
+        marker.detail = f"{processed.width}x{processed.height}"
+    with step("content_crop") as marker:
+        cropped, _ = content_crop(processed)
+        marker.detail = f"{cropped.width}x{cropped.height}"
 
-    print(f"  Calling endpoint for full ({cropped.width}x{cropped.height})")
+    LOGGER.info("calling endpoint for full image (%dx%d)", cropped.width, cropped.height)
     response = call_endpoint(cropped, args)
 
     candidates = []
@@ -476,17 +582,14 @@ def process_file(path: Path, args):
         item["source_crop"] = "full"
         candidates.append(item)
 
-    results = consolidate(candidates)
-    print(
-        f"    Model rows: {len(response.results)}; "
-        f"rows after identifier normalization: {len(results)}"
-    )
+    with step("consolidate_results") as marker:
+        results = consolidate(candidates)
+        marker.detail = f"{len(response.results)} model rows -> {len(results)} normalized rows"
 
     if response.results and not results:
-        print(
-            "    Primary rows were dropped during identifier normalization; "
-            "running minimal recovery pass...",
-            file=sys.stderr,
+        LOGGER.warning(
+            "primary rows were dropped during identifier normalization; "
+            "running minimal recovery pass"
         )
         recovered = _call_minimal_fallback(cropped, args)
         recovered_candidates = []
@@ -494,9 +597,10 @@ def process_file(path: Path, args):
             item = detection.model_dump()
             item["source_crop"] = "minimal_recovery"
             recovered_candidates.append(item)
-        results = consolidate(recovered_candidates)
+        with step("consolidate_recovery_results") as marker:
+            results = consolidate(recovered_candidates)
+            marker.detail = f"{len(results)} rows"
         response.document_convention = recovered.document_convention
-        print(f"    Recovery rows after normalization: {len(results)}")
 
     if not results:
         raise RuntimeError(
@@ -525,12 +629,13 @@ def input_files(input_path: Path):
 
 
 def main() -> int:
-    print(f"CC/SC Extractor (Azure endpoint) version: {SCRIPT_VERSION}")
+    run_start = time.perf_counter()
     parser = argparse.ArgumentParser(
         description="Extract No.<digits> to CC/SC mappings using a hosted Qwen3-VL endpoint."
     )
     parser.add_argument("input", type=Path, help="Image file or directory")
     parser.add_argument("--output", type=Path, default=Path("output"), help="Output directory")
+    parser.add_argument("--log-dir", type=Path, default=Path("logs"), help="Timed log directory")
     parser.add_argument("--endpoint", default=os.environ.get("AZURE_ENDPOINT_URL") or DEFAULT_ENDPOINT)
     parser.add_argument("--model", default=os.environ.get("AZURE_ENDPOINT_MODEL"))
     parser.add_argument("--env-file", type=Path, default=Path(".env"))
@@ -544,39 +649,56 @@ def main() -> int:
     parser.add_argument("--skip-health-check", action="store_true")
     args = parser.parse_args()
 
-    load_env(args.env_file)
-    args.endpoint = os.environ.get("AZURE_ENDPOINT_URL", args.endpoint)
-    args.model = os.environ.get("AZURE_ENDPOINT_MODEL", args.model)
-    args.token = resolve_token()
+    log_path = setup_logging(args.log_dir)
+    LOGGER.info("CC/SC Extractor (Azure endpoint) version: %s", SCRIPT_VERSION)
+    LOGGER.info("log file: %s", log_path)
+    LOGGER.info("input: %s | output: %s", args.input, args.output)
+
+    with step("load_env_and_token", str(args.env_file)):
+        load_env(args.env_file)
+        args.endpoint = os.environ.get("AZURE_ENDPOINT_URL", args.endpoint)
+        args.model = os.environ.get("AZURE_ENDPOINT_MODEL", args.model)
+        args.token = resolve_token()
 
     args.output.mkdir(parents=True, exist_ok=True)
     if not args.skip_health_check:
         check_endpoint(args)
 
-    files = input_files(args.input)
+    with step("discover_input_files", str(args.input)) as marker:
+        files = input_files(args.input)
+        marker.detail = f"{len(files)} file(s)"
     if not files:
-        print("No supported images found.", file=sys.stderr)
+        LOGGER.error("no supported images found")
         return 2
 
     all_documents = []
-    for path in files:
-        print(f"Processing: {path}")
+    for index, path in enumerate(files, start=1):
+        LOGGER.info("-" * 78)
+        LOGGER.info("processing file %d/%d: %s", index, len(files), path)
         try:
-            document, processed = process_file(path, args)
-            all_documents.append(document)
-            json_path = args.output / f"{path.stem}_cc_sc.json"
-            annotated_path = args.output / f"{path.stem}_annotated.png"
-            json_path.write_text(json.dumps(document, indent=2), encoding="utf-8")
-            annotate(processed, annotated_path)
-            print(f"  Saved: {json_path}")
-            print(f"  Saved: {annotated_path}")
+            with step("process_file_total", str(path)) as file_marker:
+                document, processed = process_file(path, args)
+                all_documents.append(document)
+                json_path = args.output / f"{path.stem}_cc_sc.json"
+                annotated_path = args.output / f"{path.stem}_annotated.png"
+                with step("write_document_json", str(json_path)):
+                    json_path.write_text(json.dumps(document, indent=2), encoding="utf-8")
+                with step("write_annotated_image", str(annotated_path)):
+                    annotate(processed, annotated_path)
+                file_marker.detail = (
+                    f"{len(document['results'])} rows | "
+                    f"{len(document['unresolved'])} need review"
+                )
         except Exception as exc:
-            print(f"  ERROR: {exc}", file=sys.stderr)
+            LOGGER.error("%s | %s", path, exc)
             all_documents.append({"source_file": str(path), "error": str(exc)})
 
     summary = args.output / "all_results.json"
-    summary.write_text(json.dumps({"documents": all_documents}, indent=2), encoding="utf-8")
-    print(f"Summary: {summary}")
+    with step("write_summary_json", str(summary)):
+        summary.write_text(json.dumps({"documents": all_documents}, indent=2), encoding="utf-8")
+
+    log_timing_summary(time.perf_counter() - run_start)
+    LOGGER.info("timed log written to %s", log_path)
     return 0
 
 

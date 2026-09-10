@@ -15,6 +15,7 @@ Thumbs.db
 
 # Project generated outputs
 output/
+logs/
 
 # Optional: keep local config files untracked if needed
 .env
