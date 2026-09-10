@@ -233,7 +233,7 @@ def _normalize_compact_output(raw_output: str) -> ExtractionResponse:
 
 
 def _extract_explicit_labels(text: str | None) -> set[str]:
-    """Extract explicit CC/SC values while ignoring generic paired labels such as SC/CC."""
+    """Return CC/SC only from literal label evidence such as [CC] or a bare CC."""
     value = str(text or "").strip()
     if not value:
         return set()
@@ -245,11 +245,12 @@ def _extract_explicit_labels(text: str | None) -> set[str]:
     if bracketed:
         return bracketed
 
-    contextual = re.sub(r"(?i)\bSC\s*/\s*CC\b|\bCC\s*/\s*SC\b", " ", value)
-    return {
-        match.upper()
-        for match in re.findall(r"(?i)\b(CC|SC)\b", contextual)
-    }
+    # Prose is never a label: sentences mention CC while denying it, as in
+    # "the cell under CC is empty". Only a bare label counts as evidence.
+    standalone = re.fullmatch(r"(?i)[\s\W]*(CC|SC)[\s\W]*", value)
+    if standalone:
+        return {standalone.group(1).upper()}
+    return set()
 
 
 def _reconcile_semantics(result: ExtractionResponse) -> ExtractionResponse:
