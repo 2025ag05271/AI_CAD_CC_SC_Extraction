@@ -24,9 +24,9 @@ from typing import Literal
 
 import requests
 from PIL import Image
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
-SCRIPT_VERSION = "1.0.0-datum-description"
+SCRIPT_VERSION = "1.1.0-datum-geometry-type"
 
 SUPPORTED = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
 
@@ -107,9 +107,22 @@ def log_timing_summary(total_elapsed: float) -> None:
 
 class DatumDetection(BaseModel):
     datum_label: str
+    geometry_type: str
     geometric_element: str
     explanation: str
     interpretation: str
+
+    @field_validator("datum_label", mode="before")
+    @classmethod
+    def _normalize_label(cls, value) -> str:
+        return str(value or "").strip().upper()
+
+    @field_validator("geometry_type", mode="before")
+    @classmethod
+    def _normalize_geometry_type(cls, value) -> str:
+        # Stable snake_case key so downstream JSON comparison can use plain equality.
+        text = re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
+        return text or "unknown"
 
 
 class DatumExtractionResponse(BaseModel):
@@ -122,16 +135,19 @@ A datum feature symbol is a boxed letter, typically attached to a surface, edge,
 The only legal datum labels in this system are A, B, and C, but you must not judge or decide whether a label in the image is correct, legal, or appropriately applied. Only describe what is visible.
 For every datum feature symbol visible in the image, report:
 - datum_label: the exact letter shown inside the datum symbol, uppercase, as visible in the image
+- geometry_type: a short, generic, singular, lowercase snake_case name (1 to 3 words) for the kind of physical feature the datum symbol is attached to. Name only the kind of feature, never its size, thread, grade, count, position, or part number. For example, a datum on any screw is "screw", on any hole (plain, threaded, or its axis) is "hole", on any flat face is "planar_surface". When a datum is on the axis or center plane of a feature, name the feature itself. Prefer one of these names when it fits: planar_surface, cylindrical_surface, hole, screw, pin, shaft, edge, slot, boss, groove, flange, rib, sphere, cone. If none fits, create a similarly generic name. Use "unknown" only if the attached feature cannot be determined.
 - geometric_element: a concise description of the geometric element the datum symbol is attached to, such as a specific surface, edge, hole axis, or feature, based on its position and any nearby dimension or feature callouts
 - explanation: what is visually connecting the datum symbol to that geometric element, such as a leader line, triangular flag, or direct attachment
 - interpretation: a short, neutral restatement of what the datum symbol denotes for that element
 Do not state whether the datum label is valid, legal, or correctly used. Only describe. Return JSON only, with no markdown fences and no commentary.
 The JSON must have this exact shape:
-{"image_id":"file name without extension","results":[{"datum_label":"A","geometric_element":"short description","explanation":"short description","interpretation":"short description"}]}
+{"image_id":"file name without extension","results":[{"datum_label":"A","geometry_type":"planar_surface","geometric_element":"short description","explanation":"short description","interpretation":"short description"}]}
+If no datum feature symbol is visible, return {"image_id":"file name without extension","results":[]}.
 """
 
 USER_PROMPT = """Look at this engineering drawing image and find every datum feature symbol.
-For each one, report datum_label, geometric_element, explanation, and interpretation as described.
+For each one, report datum_label, geometry_type, geometric_element, explanation, and interpretation as described.
+Keep geometry_type generic so the same kind of feature gets the same name on any part.
 Do not decide whether the datum label is correct or legal. Only describe what is visible.
 Return JSON only.
 """
@@ -210,9 +226,9 @@ def _normalize_output(raw_output: str, image_id: str) -> DatumExtractionResponse
         for row in rows:
             if not isinstance(row, dict):
                 continue
-            label = str(row.get("datum_label") or row.get("label") or "").strip().upper()
             normalized.append({
-                "datum_label": label,
+                "datum_label": row.get("datum_label") or row.get("label"),
+                "geometry_type": row.get("geometry_type") or row.get("type"),
                 "geometric_element": str(row.get("geometric_element") or row.get("element") or ""),
                 "explanation": str(row.get("explanation") or ""),
                 "interpretation": str(row.get("interpretation") or ""),
@@ -338,12 +354,21 @@ def process_file(path: Path, args) -> dict:
     LOGGER.info("calling endpoint for %s", path)
     response = call_endpoint(path, args)
     results = [detection.model_dump() for detection in response.results]
+    datum_geometry: dict[str, list[str]] = {}
+    for detection in response.results:
+        types = datum_geometry.setdefault(detection.datum_label, [])
+        if detection.geometry_type not in types:
+            types.append(detection.geometry_type)
+    datum_found = bool(results)
     return {
         "image_id": path.stem,
         "source_file": str(path),
         "endpoint": args.endpoint,
         "model": args.model,
         "legal_datum_labels": sorted(LEGAL_DATUM_LABELS),
+        "datum_found": datum_found,
+        "status": "datum_found" if datum_found else "no_datum_found",
+        "datum_geometry": dict(sorted(datum_geometry.items())),
         "results": results,
     }
 
