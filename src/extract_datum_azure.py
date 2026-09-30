@@ -22,13 +22,13 @@ import time
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
+from typing import Literal, get_args
 
 import requests
 from PIL import Image
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
-SCRIPT_VERSION = "1.2.0-datum-shape-type"
+SCRIPT_VERSION = "1.3.0-datum-feature-class"
 
 SUPPORTED_IMAGES = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
 PDF_SUFFIX = ".pdf"
@@ -109,9 +109,34 @@ def log_timing_summary(total_elapsed: float) -> None:
     LOGGER.info("=" * 78)
 
 
+DatumFeatureClass = Literal[
+    "planar", "cylindrical", "width", "spherical", "conical", "helical", "edge", "other",
+]
+DrawnShape = Literal[
+    "line", "rectangle", "square", "circle", "arc", "triangle", "hexagon", "polygon",
+    "ellipse", "slot", "other",
+]
+DATUM_FEATURE_CLASSES = set(get_args(DatumFeatureClass))
+DRAWN_SHAPES = set(get_args(DrawnShape))
+
+# Common model wordings mapped onto the closed class list.
+_FEATURE_CLASS_ALIASES = {
+    "plane": "planar", "planar_surface": "planar", "flat_surface": "planar",
+    "cylinder": "cylindrical", "cylindrical_surface": "cylindrical", "axis": "cylindrical",
+    "center_plane": "width", "sphere": "spherical", "cone": "conical",
+    "thread": "helical", "threaded": "helical", "straight_edge": "edge",
+}
+
+
+def _snake(value) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
+
+
 class DatumDetection(BaseModel):
     datum_label: str
-    geometry_type: str
+    datum_feature_class: DatumFeatureClass
+    drawn_shape: DrawnShape
+    part_feature: str
     geometric_element: str
     explanation: str
     interpretation: str
@@ -121,12 +146,26 @@ class DatumDetection(BaseModel):
     def _normalize_label(cls, value) -> str:
         return str(value or "").strip().upper()
 
-    @field_validator("geometry_type", mode="before")
+    @field_validator("datum_feature_class", mode="before")
     @classmethod
-    def _normalize_geometry_type(cls, value) -> str:
-        # Stable snake_case key so downstream JSON comparison can use plain equality.
-        text = re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
-        return text or "unknown"
+    def _normalize_feature_class(cls, value) -> str:
+        text = _snake(value)
+        text = _FEATURE_CLASS_ALIASES.get(text, text)
+        if text not in DATUM_FEATURE_CLASSES:
+            LOGGER.warning("unrecognized datum_feature_class %r mapped to 'other'", value)
+            return "other"
+        return text
+
+    @field_validator("drawn_shape", mode="before")
+    @classmethod
+    def _normalize_drawn_shape(cls, value) -> str:
+        text = _snake(value)
+        return text if text in DRAWN_SHAPES else "other"
+
+    @field_validator("part_feature", mode="before")
+    @classmethod
+    def _normalize_part_feature(cls, value) -> str:
+        return _snake(value) or "unknown"
 
 
 class DatumExtractionResponse(BaseModel):
@@ -134,24 +173,34 @@ class DatumExtractionResponse(BaseModel):
     results: list[DatumDetection] = Field(default_factory=list)
 
 
-SYSTEM_PROMPT = """You read engineering drawing images and describe datum feature symbols.
+SYSTEM_PROMPT = """You read 2D engineering drawing images and describe datum feature symbols.
 A datum feature symbol is a boxed letter, typically attached to a surface, edge, axis, or feature by a leader line or a triangular datum feature indicator.
 The only legal datum labels in this system are A, B, and C, but you must not judge or decide whether a label in the image is correct, legal, or appropriately applied. Only describe what is visible.
 For every datum feature symbol visible in the image, report:
 - datum_label: the exact letter shown inside the datum symbol, uppercase, as visible in the image
-- geometry_type: the basic drawn 2D shape that the datum symbol is attached to, as a short, generic, singular, lowercase snake_case name (1 to 2 words). Describe the shape as drawn on the sheet, not the 3D surface type, and never its size, count, position, or part number. If the datum points to an edge of a closed outline, name the shape of that outline (for example, any edge of a rectangular outline is "rectangle"). If it points to a curved line that is only part of a circle, use "arc"; a full circle is "circle"; an isolated straight line is "line". Prefer one of these names when it fits: rectangle, square, circle, arc, line, triangle, hexagon, polygon, ellipse, slot. If none fits, create a similarly generic shape name. Use "unknown" only if the attached shape cannot be determined.
-- geometric_element: a concise description of the geometric element the datum symbol is attached to, such as a specific surface, edge, hole axis, or feature, based on its position and any nearby dimension or feature callouts
+- datum_feature_class: exactly one of planar, cylindrical, width, spherical, conical, helical, edge, other. This value is compared across different parts, so apply these rules consistently:
+  - planar: the datum triangle sits on a straight outline or extension line representing a flat face (a flat face appears as a straight line in a 2D view) and is not aligned with a size dimension.
+  - cylindrical: the datum belongs to an unthreaded round feature such as a hole, bore, shaft, or pin, is aligned with a diameter (Ø) dimension, or sits on a curved outline (arc or circle) representing a round surface.
+  - width: the datum is aligned with a linear size dimension between two parallel lines, such as a slot, tab, or groove width.
+  - spherical: the datum is on a spherical feature, for example with an SØ or SR callout.
+  - conical: the datum is on a tapered feature such as a cone or countersink.
+  - helical: the datum is on a threaded feature such as a screw, bolt, or tapped hole (thread callout like M6 or thread lines). Threaded features are helical even though they are round.
+  - edge: the datum explicitly identifies a single straight edge rather than a face. Use rarely.
+  - other: none of the above fits or it cannot be determined.
+- drawn_shape: the basic 2D shape as drawn on the sheet, exactly one of line, rectangle, square, circle, arc, triangle, hexagon, polygon, ellipse, slot, other. If the datum points to an edge of a closed outline, name the shape of that outline. A curved line that is only part of a circle is "arc"; a full circle is "circle"; an isolated straight line is "line".
+- part_feature: a short, generic, lowercase name of the physical feature, such as screw, hole, shaft, pin, flange, face, slot. No sizes, thread specs, counts, or part numbers.
+- geometric_element: a concise description of the geometric element the datum symbol is attached to, based on its position and any nearby dimension or feature callouts
 - explanation: what is visually connecting the datum symbol to that geometric element, such as a leader line, triangular flag, or direct attachment
 - interpretation: a short, neutral restatement of what the datum symbol denotes for that element
 Do not state whether the datum label is valid, legal, or correctly used. Only describe. Return JSON only, with no markdown fences and no commentary.
 The JSON must have this exact shape:
-{"image_id":"file name without extension","results":[{"datum_label":"A","geometry_type":"rectangle","geometric_element":"short description","explanation":"short description","interpretation":"short description"}]}
+{"image_id":"file name without extension","results":[{"datum_label":"A","datum_feature_class":"planar","drawn_shape":"rectangle","part_feature":"face","geometric_element":"short description","explanation":"short description","interpretation":"short description"}]}
 If no datum feature symbol is visible, return {"image_id":"file name without extension","results":[]}.
 """
 
-USER_PROMPT = """Look at this engineering drawing image and find every datum feature symbol.
-For each one, report datum_label, geometry_type, geometric_element, explanation, and interpretation as described.
-Keep geometry_type a generic drawn shape name (such as rectangle, arc, circle) so the same shape gets the same name on any drawing.
+USER_PROMPT = """Look at this 2D engineering drawing image and find every datum feature symbol.
+For each one, report datum_label, datum_feature_class, drawn_shape, part_feature, geometric_element, explanation, and interpretation as described.
+Use only the allowed values for datum_feature_class and drawn_shape.
 Do not decide whether the datum label is correct or legal. Only describe what is visible.
 Return JSON only.
 """
@@ -232,7 +281,9 @@ def _normalize_output(raw_output: str, image_id: str) -> DatumExtractionResponse
                 continue
             normalized.append({
                 "datum_label": row.get("datum_label") or row.get("label"),
-                "geometry_type": row.get("geometry_type") or row.get("type"),
+                "datum_feature_class": row.get("datum_feature_class") or row.get("feature_class"),
+                "drawn_shape": row.get("drawn_shape") or row.get("geometry_type") or row.get("shape"),
+                "part_feature": row.get("part_feature") or row.get("feature"),
                 "geometric_element": str(row.get("geometric_element") or row.get("element") or ""),
                 "explanation": str(row.get("explanation") or ""),
                 "interpretation": str(row.get("interpretation") or ""),
@@ -358,11 +409,11 @@ def process_file(path: Path, args) -> dict:
     LOGGER.info("calling endpoint for %s", path)
     response = call_endpoint(path, args)
     results = [detection.model_dump() for detection in response.results]
-    datum_geometry: dict[str, list[str]] = {}
+    datum_feature_classes: dict[str, list[str]] = {}
     for detection in response.results:
-        types = datum_geometry.setdefault(detection.datum_label, [])
-        if detection.geometry_type not in types:
-            types.append(detection.geometry_type)
+        classes = datum_feature_classes.setdefault(detection.datum_label, [])
+        if detection.datum_feature_class not in classes:
+            classes.append(detection.datum_feature_class)
     datum_found = bool(results)
     return {
         "image_id": path.stem,
@@ -370,7 +421,7 @@ def process_file(path: Path, args) -> dict:
         "legal_datum_labels": sorted(LEGAL_DATUM_LABELS),
         "datum_found": datum_found,
         "status": "datum_found" if datum_found else "no_datum_found",
-        "datum_geometry": dict(sorted(datum_geometry.items())),
+        "datum_feature_classes": dict(sorted(datum_feature_classes.items())),
         "results": results,
     }
 
