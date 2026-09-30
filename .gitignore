@@ -19,3 +19,7 @@ logs/
 
 # Optional: keep local config files untracked if needed
 .env
+
+build/
+dist/
+*.spec
