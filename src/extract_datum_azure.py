@@ -2,6 +2,8 @@
 
 Sends OpenAI-compatible chat completion requests to an Azure ML hosted Qwen3-VL
 endpoint. No image preprocessing is applied; each image is read and sent as-is.
+PDF inputs are rendered page by page to PNG (requires PyMuPDF) and then processed
+like images.
 Legal datum labels are A, B, and C. This script only describes each datum
 label and the geometric element it is attached to. It does not judge whether
 the datum usage is correct.
@@ -28,7 +30,9 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 
 SCRIPT_VERSION = "1.1.0-datum-geometry-type"
 
-SUPPORTED = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
+SUPPORTED_IMAGES = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
+PDF_SUFFIX = ".pdf"
+SUPPORTED = SUPPORTED_IMAGES | {PDF_SUFFIX}
 
 DEFAULT_ENDPOINT = "https://qwen3-6-27b-ep.westeurope.inference.ml.azure.com/v1/chat/completions"
 
@@ -373,12 +377,46 @@ def process_file(path: Path, args) -> dict:
     }
 
 
-def input_files(input_path: Path):
-    if input_path.is_file():
-        if input_path.suffix.lower() not in SUPPORTED:
-            raise ValueError(f"Unsupported image type: {input_path.suffix}")
-        return [input_path]
-    return sorted(p for p in input_path.rglob("*") if p.suffix.lower() in SUPPORTED)
+def input_files(input_paths: list[Path]) -> list[Path]:
+    files: list[Path] = []
+    for input_path in input_paths:
+        if input_path.is_file():
+            if input_path.suffix.lower() not in SUPPORTED:
+                raise ValueError(f"Unsupported input type: {input_path}")
+            files.append(input_path)
+        elif input_path.is_dir():
+            files.extend(sorted(p for p in input_path.rglob("*") if p.suffix.lower() in SUPPORTED))
+        else:
+            raise FileNotFoundError(f"Input not found: {input_path}")
+    unique: dict[Path, Path] = {}
+    for path in files:
+        unique.setdefault(path.resolve(), path)
+    return list(unique.values())
+
+
+def pdf_to_images(pdf_path: Path, out_dir: Path, dpi: int, rotation: int = 90) -> list[tuple[Path, int]]:
+    """Render every PDF page to PNG, rotated clockwise by `rotation` degrees."""
+    try:
+        import fitz  # PyMuPDF
+    except ImportError as exc:
+        raise RuntimeError(
+            "PDF input requires PyMuPDF. Install it with: python -m pip install pymupdf"
+        ) from exc
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    pages: list[tuple[Path, int]] = []
+    with fitz.open(pdf_path) as doc:
+        if doc.page_count == 0:
+            raise RuntimeError(f"PDF has no pages: {pdf_path}")
+        for number, page in enumerate(doc, start=1): # type: ignore
+            # Single-page PDFs keep the PDF stem so image_id matches the uploaded file name.
+            stem = pdf_path.stem if doc.page_count == 1 else f"{pdf_path.stem}_page{number}"
+            image_path = out_dir / f"{stem}.png"
+            # PDF /Rotate is clockwise; only the in-memory copy is changed, not the source file.
+            page.set_rotation((page.rotation + rotation) % 360)
+            page.get_pixmap(dpi=dpi).save(image_path)
+            pages.append((image_path, number))
+    return pages
 
 
 def main() -> int:
@@ -386,7 +424,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Describe datum feature symbols and their attached geometric elements using a hosted Qwen3-VL endpoint."
     )
-    parser.add_argument("input", type=Path, help="Image file or directory")
+    parser.add_argument("input", type=Path, nargs="+", help="One or more image/PDF files or directories")
     parser.add_argument("--output", type=Path, default=Path("output"), help="Output directory")
     parser.add_argument("--log-dir", type=Path, default=Path("logs"), help="Timed log directory")
     parser.add_argument("--endpoint", default=os.environ.get("AZURE_ENDPOINT_URL") or DEFAULT_ENDPOINT)
@@ -399,12 +437,16 @@ def main() -> int:
     parser.add_argument("--timeout", type=int, default=300)
     parser.add_argument("--retries", type=int, default=1)
     parser.add_argument("--skip-health-check", action="store_true")
+    parser.add_argument("--pdf-dpi", type=int, default=200, help="Render resolution for PDF pages")
+    parser.add_argument("--pdf-rotation", type=int, default=90, choices=[0, 90, 180, 270],
+                        help="Clockwise rotation applied to PDF pages before rendering")
     args = parser.parse_args()
 
     log_path = setup_logging(args.log_dir)
     LOGGER.info("Datum Extractor (Azure endpoint) version: %s", SCRIPT_VERSION)
     LOGGER.info("log file: %s", log_path)
-    LOGGER.info("input: %s | output: %s", args.input, args.output)
+    input_label = ", ".join(str(p) for p in args.input)
+    LOGGER.info("input: %s | output: %s", input_label, args.output)
 
     with step("load_env_and_token", str(args.env_file)):
         load_env(args.env_file)
@@ -416,32 +458,57 @@ def main() -> int:
     if not args.skip_health_check:
         check_endpoint(args)
 
-    with step("discover_input_files", str(args.input)) as marker:
+    with step("discover_input_files", input_label) as marker:
         files = input_files(args.input)
         marker.detail = f"{len(files)} file(s)"
     if not files:
-        LOGGER.error("no supported images found")
+        LOGGER.error("no supported images or PDFs found")
         return 2
 
     all_documents = []
     for index, path in enumerate(files, start=1):
         LOGGER.info("-" * 78)
         LOGGER.info("processing file %d/%d: %s", index, len(files), path)
-        try:
-            with step("process_file_total", str(path)) as file_marker:
-                document = process_file(path, args)
-                all_documents.append(document)
-                json_path = args.output / f"{path.stem}_datum.json"
-                with step("write_document_json", str(json_path)):
-                    json_path.write_text(json.dumps(document, indent=2), encoding="utf-8")
-                file_marker.detail = f"{len(document['results'])} datum symbol(s)"
-        except Exception as exc:
-            LOGGER.error("%s | %s", path, exc)
-            all_documents.append({"source_file": str(path), "error": str(exc)})
+        is_pdf = path.suffix.lower() == PDF_SUFFIX
+        if is_pdf:
+            try:
+                with step("convert_pdf_to_images",
+                          f"{path} @ {args.pdf_dpi} dpi, rotate {args.pdf_rotation} cw") as marker:
+                    pages = pdf_to_images(path, args.output / "pdf_pages", args.pdf_dpi, args.pdf_rotation)
+                    marker.detail = f"{len(pages)} page(s)"
+            except Exception as exc:
+                LOGGER.error("%s | %s", path, exc)
+                all_documents.append({"source_file": str(path), "error": str(exc)})
+                continue
+        else:
+            pages = [(path, None)]
+
+        for image_path, page_number in pages:
+            try:
+                with step("process_file_total", str(image_path)) as file_marker:
+                    document = process_file(image_path, args)
+                    if is_pdf:
+                        document["source_pdf"] = str(path)
+                        document["pdf_page"] = page_number
+                    all_documents.append(document)
+                    json_path = args.output / f"{image_path.stem}_datum.json"
+                    with step("write_document_json", str(json_path)):
+                        json_path.write_text(json.dumps(document, indent=2), encoding="utf-8")
+                    file_marker.detail = f"{len(document['results'])} datum symbol(s)"
+            except Exception as exc:
+                LOGGER.error("%s | %s", image_path, exc)
+                error_doc: dict[str, object] = {"source_file": str(image_path), "error": str(exc)}
+                if is_pdf:
+                    error_doc.update(source_pdf=str(path), pdf_page=page_number)
+                all_documents.append(error_doc)
 
     summary = args.output / "all_datum_results.json"
     with step("write_summary_json", str(summary)):
-        summary.write_text(json.dumps({"documents": all_documents}, indent=2), encoding="utf-8")
+        summary.write_text(json.dumps({
+            "inputs": [str(p) for p in files],
+            "document_count": len(all_documents),
+            "documents": all_documents,
+        }, indent=2), encoding="utf-8")
 
     log_timing_summary(time.perf_counter() - run_start)
     LOGGER.info("timed log written to %s", log_path)
