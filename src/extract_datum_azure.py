@@ -367,8 +367,6 @@ def process_file(path: Path, args) -> dict:
     return {
         "image_id": path.stem,
         "source_file": str(path),
-        "endpoint": args.endpoint,
-        "model": args.model,
         "legal_datum_labels": sorted(LEGAL_DATUM_LABELS),
         "datum_found": datum_found,
         "status": "datum_found" if datum_found else "no_datum_found",
